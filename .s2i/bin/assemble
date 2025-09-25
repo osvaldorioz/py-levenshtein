@@ -2,7 +2,7 @@
 set -e
 set -x  # Enable debug output
 
-# Version 1.0 for Levenshtein project
+# Version 1.1 for Levenshtein project
 
 # Ensure required commands are available
 command -v g++ >/dev/null 2>&1 || { echo "g++ is not installed"; exit 1; }
@@ -13,14 +13,7 @@ command -v python3-config >/dev/null 2>&1 || { echo "python3-config is not insta
 # Check for Python.h to verify python3-devel is installed
 if [ ! -f "/usr/include/python3.12/Python.h" ]; then
     echo "Error: Python.h not found. Ensure python3-devel is installed in the builder image."
-    echo "Please use a custom builder image with python3-devel, gcc, gcc-c++, make, and python3-config pre-installed."
     exit 1
-fi
-
-# Check for pybind11 includes
-if [ ! -d "/opt/app-root/lib64/python3.12/site-packages/pybind11/include" ]; then
-    echo "Installing pybind11..."
-    pip install pybind11
 fi
 
 # Change to source directory
@@ -38,11 +31,13 @@ cp -v /tmp/src/*.py /opt/app-root/src/ || echo "No .py files found in /tmp/src"
 if [ -f /tmp/src/requirements.txt ]; then
     echo "Copying requirements.txt to /opt/app-root/src/"
     cp -v /tmp/src/requirements.txt /opt/app-root/src/
+    echo "Installing Python dependencies..."
+    pip install --no-cache-dir -r /opt/app-root/src/requirements.txt
 fi
 
 # Compile levdes.so
 echo "Compiling levdes.so..."
-g++ -O3 -Wall -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) \
+g++ -O3 -Wall -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) \
     /tmp/src/binding.cpp /tmp/src/levenshtein_core.cpp \
     -o /opt/app-root/src/levdes$(python3-config --extension-suffix) \
     -I/usr/include/python3.12 \
