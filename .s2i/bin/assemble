@@ -2,7 +2,7 @@
 set -e
 set -x  # Enable debug output
 
-# Version 1.2 for Levenshtein project
+# Version 1.3 for Levenshtein project
 
 # Verify system dependencies
 if [ ! -f "/usr/include/python3.12/Python.h" ]; then
@@ -35,6 +35,7 @@ ls -la /tmp/src
 
 # Create necessary directories
 mkdir -p /opt/app-root/src/python
+mkdir -p /opt/app-root/src/wheels
 
 # Copy Python files to /opt/app-root/src/python
 echo "Copying .py files to /opt/app-root/src/python/"
@@ -49,8 +50,26 @@ fi
 if [ -f /tmp/src/requirements.txt ]; then
     echo "Copying requirements.txt to /opt/app-root/src/"
     cp -v /tmp/src/requirements.txt /opt/app-root/src/
-    echo "Installing Python dependencies..."
-    python3.12 -m pip install --no-cache-dir -r /opt/app-root/src/requirements.txt || { echo "Error installing Python dependencies"; exit 1; }
+else
+    echo "Warning: requirements.txt not found in /tmp/src"
+fi
+
+# Copy wheels directory to /opt/app-root/src/wheels
+echo "Copying wheels directory to /opt/app-root/src/wheels/"
+if [ -d "/tmp/src/wheels" ]; then
+    cp -r /tmp/src/wheels/* /opt/app-root/src/wheels/ || { echo "Error copying wheels directory"; exit 1; }
+else
+    echo "Error: Directory /tmp/src/wheels not found"
+    exit 1
+fi
+
+# Install wheels from the wheels directory
+echo "Installing dependencies from .whl files in /opt/app-root/src/wheels/"
+if [ -d /opt/app-root/src/wheels ]; then
+    python3.12 -m pip install --no-cache-dir --no-index --find-links /opt/app-root/src/wheels/ -r /opt/app-root/src/requirements.txt || { echo "Error installing Python dependencies from wheels"; exit 1; }
+else
+    echo "Error: /opt/app-root/src/wheels directory not found after copy"
+    exit 1
 fi
 
 # Compile levdes.so
@@ -82,4 +101,3 @@ chmod -R g+rw /opt/app-root/src
 
 echo "Assemble completed successfully."
 touch /opt/app-root/src/.s2i
-
