@@ -2,17 +2,27 @@
 set -e
 set -x  # Enable debug output
 
-# Version 1.1 for Levenshtein project
+# Version 1.2 for Levenshtein project
 
-# Ensure required commands are available
-command -v g++ >/dev/null 2>&1 || { echo "g++ is not installed"; exit 1; }
-command -v python3 >/dev/null 2>&1 || { echo "python3 is not installed"; exit 1; }
-command -v file >/dev/null 2>&1 || { echo "file is not installed"; exit 1; }
-command -v python3-config >/dev/null 2>&1 || { echo "python3-config is not installed"; exit 1; }
-
-# Check for Python.h to verify python3-devel is installed
+# Verify system dependencies
 if [ ! -f "/usr/include/python3.12/Python.h" ]; then
     echo "Error: Python.h not found. Ensure python3-devel is installed in the builder image."
+    exit 1
+fi
+if ! command -v g++ >/dev/null 2>&1; then
+    echo "Error: g++ not found. Ensure gcc-c++ is installed in the builder image."
+    exit 1
+fi
+if ! command -v make >/dev/null 2>&1; then
+    echo "Error: make not found. Ensure make is installed in the builder image."
+    exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 not found. Ensure python3 is installed in the builder image."
+    exit 1
+fi
+if ! command -v file >/dev/null 2>&1; then
+    echo "Error: file not found. Ensure file is installed in the builder image."
     exit 1
 fi
 
@@ -23,31 +33,53 @@ cd /tmp/src
 echo "Contents of /tmp/src:"
 ls -la /tmp/src
 
-# Copy Python files to /opt/app-root/src
-echo "Copying .py files to /opt/app-root/src/"
-cp -v /tmp/src/*.py /opt/app-root/src/ || echo "No .py files found in /tmp/src"
+# Create necessary directories
+mkdir -p /opt/app-root/src/python
+
+# Copy Python files to /opt/app-root/src/python
+echo "Copying .py files to /opt/app-root/src/python/"
+if [ -d "/tmp/src/python" ]; then
+    cp -v /tmp/src/python/*.py /opt/app-root/src/python/ || echo "No .py files found in /tmp/src/python"
+else
+    echo "Looking for .py files in /tmp/src"
+    cp -v /tmp/src/*.py /opt/app-root/src/python/ || echo "No .py files found in /tmp/src"
+fi
 
 # Copy requirements.txt if exists
 if [ -f /tmp/src/requirements.txt ]; then
     echo "Copying requirements.txt to /opt/app-root/src/"
     cp -v /tmp/src/requirements.txt /opt/app-root/src/
     echo "Installing Python dependencies..."
-    pip install --no-cache-dir -r /opt/app-root/src/requirements.txt
+    python3.12 -m pip install --no-cache-dir -r /opt/app-root/src/requirements.txt || { echo "Error installing Python dependencies"; exit 1; }
 fi
 
 # Compile levdes.so
 echo "Compiling levdes.so..."
-g++ -O3 -Wall -shared -std=c++14 -fPIC $(python3 -m pybind11 --includes) \
+g++ -O3 -Wall -shared -std=c++11 -fPIC $(python3 -m pybind11 --includes) \
     /tmp/src/binding.cpp /tmp/src/levenshtein_core.cpp \
-    -o /opt/app-root/src/levdes$(python3-config --extension-suffix) \
+    -o /opt/app-root/src/python/levdes.so \
     -I/usr/include/python3.12 \
     -L/opt/app-root/lib64 \
     -L/usr/lib64 \
-    -std=c++11 \
     || { echo "Error compiling levdes.so"; exit 1; }
+
+# Verify levdes.so exists and has correct permissions
+echo "Verifying presence of /opt/app-root/src/python/levdes.so"
+ls -la /opt/app-root/src/python/ || echo "Directory /opt/app-root/src/python not found"
+if [ ! -f "/opt/app-root/src/python/levdes.so" ]; then
+    echo "Error: /opt/app-root/src/python/levdes.so not found"
+    exit 1
+fi
+chmod 755 /opt/app-root/src/python/levdes.so
+
+# Set PYTHONPATH to include /opt/app-root/src/python
+export PYTHONPATH=/opt/app-root/src/python:$PYTHONPATH
+echo "PYTHONPATH configured: $PYTHONPATH"
 
 # Set permissions for /opt/app-root/src
 chown -R 1001:0 /opt/app-root/src
 chmod -R g+rw /opt/app-root/src
 
 echo "Assemble completed successfully."
+touch /opt/app-root/src/.s2i
+
