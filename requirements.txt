@@ -1,4 +1,4 @@
-annotated-types==0.7.0
+annotated-types
 anyio==4.10.0
 click==8.3.0
 fastapi==0.116.2
